@@ -12,13 +12,16 @@ import (
 	"fmt"
 	"image/color/palette"
 	"argulox.top/argulox/ImageSpliter.git/commons"
+	textdraw "argulox.top/argulox/ImageSpliter.git/draw"
 	"github.com/nfnt/resize"
 	"image/jpeg"
+	"argulox.top/argulox/ImageSpliter.git/models"
 )
 
 type TrajectoryMeta struct {
-	Img   *image.Image
-	Point *image.Point
+	Img       *image.Image
+	Point     *image.Point
+	Sentences models.Sentence
 }
 
 type FlyTrajectory struct {
@@ -48,7 +51,7 @@ func (c *BloomTrajectory) calc() chan TrajectoryMeta {
 			}
 			width := float32(originW) * scale
 			p := image.Point{X: center.X - int(width/2), Y: center.Y - int(width/2)}
-			img := resize.Resize(uint(width), uint(width), c.Img, resize.Lanczos3)
+			img := resize.Resize(uint(width), 0, c.Img, resize.Lanczos3)
 			ch <- TrajectoryMeta{Img: &img, Point: &p}
 		}
 	}()
@@ -66,14 +69,18 @@ func (c *FlyTrajectory) calc() chan TrajectoryMeta {
 		for i := 0; i < c.PicNum; i++ {
 			if i == 0 {
 				p := image.Point{X: int(float32(dir) * float32(c.Width) / 2.0), Y: -100}
-				ch <- TrajectoryMeta{&c.Img, &p}
+				sen := models.Sentence{Range: []int{i, i}, X: int(float32(c.Width)/2.0 - float32(dir)*float32(c.Width)/2.0), Y: 50}
+				ch <- TrajectoryMeta{&c.Img, &p, sen}
 				continue
 			} else if i == c.PicNum-1 {
 				p := image.Point{X: int(float32(dir) * -float32(c.Width) / 2.0), Y: -100}
-				ch <- TrajectoryMeta{&c.Img, &p}
+				sen := models.Sentence{Range: []int{i, i}, X: int(float32(c.Width)/2.0 + float32(dir)*float32(c.Width)/2.0), Y: 50}
+				ch <- TrajectoryMeta{&c.Img, &p, sen}
 			} else {
-				p := image.Point{X: int(float32(dir) * -float32(i) * float32(3)), Y: -100}
-				ch <- TrajectoryMeta{&c.Img, &p}
+				var speed float32 = 3.0
+				p := image.Point{X: int(float32(dir) * -float32(i) * speed), Y: -100}
+				sen := models.Sentence{Range: []int{i, i}, X: int(float32(c.Width)/2.0 - float32(dir)*float32(i)*speed), Y: 50}
+				ch <- TrajectoryMeta{&c.Img, &p, sen}
 			}
 		}
 	}()
@@ -93,8 +100,23 @@ func readImage(path string) (image.Image, error) {
 		return nil, err
 	}
 	//固定大小成256*256
-	img = resize.Resize(256, 256, img, resize.Lanczos3)
+	img = resize.Resize(256, 0, img, resize.Lanczos3)
 	return img, nil
+}
+
+func makeOnlyFly(anim *gif.GIF, paths []string, delay int) error {
+	if len(paths) < 3 {
+		panic("picture number must not less than 3")
+	}
+	dir := -1
+	for _, path := range paths[0:3] {
+		dir *= -1
+		if err := makeFly(anim, path, 14, delay, dir); err != nil {
+			return err
+		}
+
+	}
+	return nil
 }
 
 func makeBling(anim *gif.GIF, paths []string, delay int) error {
@@ -102,7 +124,7 @@ func makeBling(anim *gif.GIF, paths []string, delay int) error {
 		panic("picture number must not less than 3")
 	}
 	for _, path := range paths[0:2] {
-		if err := makeFly(anim, path, 7, delay); err != nil {
+		if err := makeFly(anim, path, 7, delay, 1); err != nil {
 			return err
 		}
 
@@ -112,7 +134,10 @@ func makeBling(anim *gif.GIF, paths []string, delay int) error {
 	}
 	return nil
 }
-func makeFly(anim *gif.GIF, path string, picNum, delay int) error {
+
+var man = textdraw.NewDrawTextManager("./STHeiti Medium.ttc", 72, "none")
+
+func makeFly(anim *gif.GIF, path string, picNum, delay int, direct int) error {
 
 	img, err := readImage(path)
 	if err != nil {
@@ -120,7 +145,7 @@ func makeFly(anim *gif.GIF, path string, picNum, delay int) error {
 	}
 	log.Print("load image ", path, " ok")
 
-	flyTrajectory := FlyTrajectory{Width: img.Bounds().Dx(), Direct: 1, PicNum: picNum, Img: img}
+	flyTrajectory := FlyTrajectory{Width: img.Bounds().Dx(), Direct: direct, PicNum: picNum, Img: img}
 	backgroundHeight := img.Bounds().Dy() + 100
 	generator := flyTrajectory.calc()
 	for i := 0; i < picNum; i++ {
@@ -131,6 +156,8 @@ func makeFly(anim *gif.GIF, path string, picNum, delay int) error {
 
 		rect := image.Rectangle{Min: image.ZP, Max: image.Point{X: img.Bounds().Dx(), Y: img.Bounds().Dy() + 100}}
 		draw.FloydSteinberg.Draw(paletted, rect, img, *x.Point)
+
+		paletted = man.DrawTextInner(paletted, x.Sentences.X, x.Sentences.Y, "测试文字", 32, color.Black)
 
 		anim.Image = append(anim.Image, paletted)
 		anim.Delay = append(anim.Delay, delay)
@@ -182,7 +209,7 @@ func main() {
 	paths := strings.Split(p, ",")
 
 	anim := gif.GIF{}
-	if err := makeBling(&anim, paths, delay); err != nil {
+	if err := makeOnlyFly(&anim, paths, delay); err != nil {
 		log.Fatal(err)
 	}
 
