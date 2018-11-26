@@ -16,6 +16,7 @@ import (
 	"github.com/nfnt/resize"
 	"image/jpeg"
 	"argulox.top/argulox/ImageSpliter.git/models"
+	"encoding/json"
 )
 
 type TrajectoryMeta struct {
@@ -69,12 +70,12 @@ func (c *FlyTrajectory) calc() chan TrajectoryMeta {
 		for i := 0; i < c.PicNum; i++ {
 			if i == 0 {
 				p := image.Point{X: int(float32(dir) * float32(c.Width) / 2.0), Y: -100}
-				sen := models.Sentence{Range: []int{i, i}, X: int(float32(c.Width)/2.0 - float32(dir)*float32(c.Width)/2.0), Y: 50}
+				sen := models.Sentence{Range: []int{i, i}, X: int(float32(c.Width)/2.0 + float32(dir)*float32(c.Width)/2.0), Y: 50}
 				ch <- TrajectoryMeta{&c.Img, &p, sen}
 				continue
 			} else if i == c.PicNum-1 {
 				p := image.Point{X: int(float32(dir) * -float32(c.Width) / 2.0), Y: -100}
-				sen := models.Sentence{Range: []int{i, i}, X: int(float32(c.Width)/2.0 + float32(dir)*float32(c.Width)/2.0), Y: 50}
+				sen := models.Sentence{Range: []int{i, i}, X: int(float32(c.Width)/2.0 - float32(dir)*float32(c.Width)/2.0), Y: 50}
 				ch <- TrajectoryMeta{&c.Img, &p, sen}
 			} else {
 				var speed float32 = 3.0
@@ -157,7 +158,12 @@ func makeFly(anim *gif.GIF, path string, picNum, delay int, direct int) error {
 		rect := image.Rectangle{Min: image.ZP, Max: image.Point{X: img.Bounds().Dx(), Y: img.Bounds().Dy() + 100}}
 		draw.FloydSteinberg.Draw(paletted, rect, img, *x.Point)
 
-		paletted = man.DrawTextInner(paletted, x.Sentences.X, x.Sentences.Y, "测试文字", 32, color.Black)
+		tempX := man.CalculateMidToLeftPosX(x.Sentences.X, "测试文字", 32)
+		//tempX := (i-picNum/2)*20
+		if b, e := json.Marshal(x.Sentences); e == nil {
+			fmt.Println(string(b))
+		}
+		paletted = man.DrawTextInner(paletted, &tempX, x.Sentences.Y, "测试文字", 32, color.Black)
 
 		anim.Image = append(anim.Image, paletted)
 		anim.Delay = append(anim.Delay, delay)
