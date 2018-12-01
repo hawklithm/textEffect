@@ -110,12 +110,17 @@ func makeOnlyFly(anim *gif.GIF, paths []string, delay int) error {
 		panic("picture number must not less than 3")
 	}
 	dir := -1
-	for _, path := range paths[0:3] {
+	r := make([]models.Sentence, 0)
+	for i, path := range paths[0:3] {
 		dir *= -1
-		if err := makeFly(anim, path, 14, delay, dir); err != nil {
+		if err, sentences := makeFly(anim, path, 14, delay, dir, i*14); err != nil {
 			return err
+		} else {
+			r = append(r, sentences...)
 		}
-
+	}
+	if j, err := json.Marshal(r); err == nil {
+		fmt.Print(string(j))
 	}
 	return nil
 }
@@ -124,8 +129,8 @@ func makeBling(anim *gif.GIF, paths []string, delay int) error {
 	if len(paths) < 3 {
 		panic("picture number must not less than 3")
 	}
-	for _, path := range paths[0:2] {
-		if err := makeFly(anim, path, 7, delay, 1); err != nil {
+	for i, path := range paths[0:2] {
+		if err,_ := makeFly(anim, path, 7, delay, 1, i*7); err != nil {
 			return err
 		}
 
@@ -138,17 +143,18 @@ func makeBling(anim *gif.GIF, paths []string, delay int) error {
 
 var man = textdraw.NewDrawTextManager("./STHeiti Medium.ttc", 72, "none")
 
-func makeFly(anim *gif.GIF, path string, picNum, delay int, direct int) error {
+func makeFly(anim *gif.GIF, path string, picNum, delay int, direct int, offset int) (error, []models.Sentence) {
 
 	img, err := readImage(path)
 	if err != nil {
-		return err
+		return err, nil
 	}
 	log.Print("load image ", path, " ok")
 
 	flyTrajectory := FlyTrajectory{Width: img.Bounds().Dx(), Direct: direct, PicNum: picNum, Img: img}
 	backgroundHeight := img.Bounds().Dy() + 100
 	generator := flyTrajectory.calc()
+	sentences := make([]models.Sentence, 0)
 	for i := 0; i < picNum; i++ {
 		x := <-generator
 		backgroundRect := image.Rect(0, 0, img.Bounds().Max.X, backgroundHeight)
@@ -158,17 +164,20 @@ func makeFly(anim *gif.GIF, path string, picNum, delay int, direct int) error {
 		rect := image.Rectangle{Min: image.ZP, Max: image.Point{X: img.Bounds().Dx(), Y: img.Bounds().Dy() + 100}}
 		draw.FloydSteinberg.Draw(paletted, rect, img, *x.Point)
 
-		tempX := man.CalculateMidToLeftPosX(x.Sentences.X, "测试文字", 32)
 		//tempX := (i-picNum/2)*20
-		if b, e := json.Marshal(x.Sentences); e == nil {
-			fmt.Println(string(b))
-		}
-		paletted = man.DrawTextInner(paletted, &tempX, x.Sentences.Y, "测试文字", 32, color.Black)
+		x.Sentences.Range[0] += offset
+		x.Sentences.Range[1] += offset
+		sentences = append(sentences, x.Sentences)
+
+		//tempX := man.CalculateMidToLeftPosX(x.Sentences.X, "测试文字", 32)
+		//
+		//paletted = man.DrawTextInner(paletted, &tempX, x.Sentences.Y, "测试文字", 32, color.Black,"center")
 
 		anim.Image = append(anim.Image, paletted)
 		anim.Delay = append(anim.Delay, delay)
 	}
-	return nil
+
+	return nil, sentences
 }
 func makeBoom(anim *gif.GIF, path string, picNum, delay int) error {
 
